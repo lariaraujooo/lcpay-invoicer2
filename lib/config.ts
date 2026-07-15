@@ -98,6 +98,45 @@ export function isServerless(): boolean {
   return Boolean(process.env.VERCEL);
 }
 
+/** Payload de um JWT, sem validar assinatura — só queremos inspecionar as claims. */
+function decodeJwtPayload(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    return Buffer.from(parts[1], "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Diagnostica um 400/401/403 da LCPay sem vazar credencial: só o formato dos
+ * valores e se o token menciona a conta que estamos enviando. Vai para o log do
+ * servidor, nunca para a resposta.
+ *
+ * "Conta não pertence ao usuário" normalmente é uma destas causas:
+ * valor colado com sujeira (aspas, rótulo), ou conta e token de origens diferentes.
+ */
+export function logCredentialDiagnostics(): void {
+  const accountId = process.env.LCPAY_ACCOUNT_ID?.trim() ?? "";
+  const token = process.env.LCPAY_TOKEN?.trim() ?? "";
+
+  const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+  const payload = decodeJwtPayload(token);
+  const mentionsAccount =
+    payload && accountId ? payload.toLowerCase().includes(accountId.toLowerCase()) : false;
+
+  console.error(
+    [
+      "[diagnóstico] credenciais LCPay:",
+      `accountId ${accountId.length} chars, formato GUID: ${isGuid ? "sim" : "NÃO"}`,
+      `token ${token.length} chars, formato JWT: ${payload ? "sim" : "NÃO"}`,
+      `token menciona o accountId: ${mentionsAccount ? "sim" : "NÃO"}`,
+      payload ? `claims do token: ${Object.keys(JSON.parse(payload) as object).join(", ")}` : "",
+    ].join(" | "),
+  );
+}
+
 /** Diagnóstico para a UI. Nunca expõe valores de credencial — apenas se estão presentes. */
 export function getEnvironmentInfo() {
   try {

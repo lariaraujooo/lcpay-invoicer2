@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { logCredentialDiagnostics } from "@/lib/config";
 import { LcPayError, createPixCharge } from "@/lib/lcpay";
 import { findProduct } from "@/lib/products";
 import { attachCharge, createOrder, markOrderFailed, type Order, type OrderItem } from "@/lib/store";
@@ -94,6 +95,9 @@ export async function POST(request: Request) {
 
     if (error instanceof LcPayError) {
       console.error(`[checkout] pedido ${order.id}: LCPay ${error.status} - ${error.message}`);
+      // 4xx de autenticação/permissão quase sempre é credencial mal configurada.
+      // O diagnóstico só vai para o log, e não expõe os valores.
+      if ([400, 401, 403].includes(error.status)) logCredentialDiagnostics();
       return NextResponse.json(
         { error: error.isTransient ? "A LCPay está indisponível no momento. Tente novamente." : error.message },
         { status: error.isTransient ? 503 : 502 },
