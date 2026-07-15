@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { LcPayError, createPixCharge } from "@/lib/lcpay";
 import { findProduct } from "@/lib/products";
-import { attachCharge, createOrder, markOrderFailed, type OrderItem } from "@/lib/store";
+import { attachCharge, createOrder, markOrderFailed, type Order, type OrderItem } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -64,7 +64,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Total do pedido precisa ser maior que zero." }, { status: 400 });
   }
 
-  const order = await createOrder(items, totalCents);
+  // Gravar o pedido pode falhar antes de qualquer contato com a LCPay — por exemplo
+  // em serverless sem Redis, onde o backend de arquivo não consegue escrever.
+  // Sem este catch a exceção escaparia e viraria um 500 de corpo vazio, que o
+  // cliente não consegue distinguir de uma falha de rede.
+  let order: Order;
+  try {
+    order = await createOrder(items, totalCents);
+  } catch (error) {
+    console.error("[checkout] falha ao registrar o pedido", error);
+    return NextResponse.json(
+      { error: "Não foi possível registrar o pedido: armazenamento indisponível." },
+      { status: 503 },
+    );
+  }
 
   try {
     const charge = await createPixCharge({

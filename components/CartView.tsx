@@ -36,9 +36,19 @@ export function CartView() {
         }),
       });
 
-      const payload = (await response.json()) as { orderId?: string; error?: string };
-      if (!response.ok || !payload.orderId) {
-        setError(payload.error ?? "Não foi possível gerar a cobrança Pix.");
+      // Um erro do servidor pode não vir em JSON (ex.: 500 de corpo vazio). Nesse caso
+      // não temos mensagem, mas sabemos que ele respondeu — não é falha de rede.
+      let payload: { orderId?: string; error?: string } | null = null;
+      try {
+        payload = (await response.json()) as { orderId?: string; error?: string };
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok || !payload?.orderId) {
+        setError(
+          payload?.error ?? `Não foi possível gerar a cobrança Pix (erro ${response.status}).`,
+        );
         setIsSubmitting(false);
         return;
       }
