@@ -4,17 +4,20 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { Redis } from "@upstash/redis";
+import Redis from "ioredis";
 
 /**
  * Persistência dos pedidos, com dois backends:
  *
- *   Redis  — usado quando há credenciais no ambiente (Vercel/produção).
+ *   Redis  — usado quando há REDIS_URL no ambiente (Vercel/produção).
  *   Arquivo JSON — usado no desenvolvimento local, sem depender de serviço externo.
  *
  * O backend de arquivo NÃO funciona em serverless: o filesystem da Vercel é
  * somente-leitura (fora do /tmp, que é efêmero e não é compartilhado entre
  * invocações — o webhook cairia numa instância sem o pedido).
+ *
+ * Falamos o protocolo Redis padrão via REDIS_URL, então serve qualquer provedor
+ * (Redis Cloud, Upstash, um Redis local) sem trocar de cliente.
  */
 
 export type OrderStatus = "PENDING" | "PAID" | "FAILED";
@@ -60,23 +63,34 @@ const TTL_SECONDS = 30 * 24 * 60 * 60;
 // ---------------------------------------------------------------- Redis
 
 /**
- * A integração Upstash pelo Marketplace da Vercel injeta `KV_REST_API_*`;
- * a integração direta da Upstash injeta `UPSTASH_REDIS_REST_*`. Aceitamos as duas.
+ * As integrações de Redis do Marketplace da Vercel injetam `REDIS_URL`
+ * (`KV_URL` é o nome legado). Uma URL basta: o protocolo é o mesmo em qualquer provedor.
  */
-function readRedisEnv(): { url: string; token: string } | null {
-  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url?.trim() || !token?.trim()) return null;
-  return { url: url.trim(), token: token.trim() };
+function readRedisUrl(): string | null {
+  const url = process.env.REDIS_URL ?? process.env.KV_URL;
+  return url?.trim() ? url.trim() : null;
 }
 
-let redisClient: Redis | null | undefined;
+/**
+ * A conexão vive no globalThis para ser reaproveitada entre invocações que caiam
+ * na mesma instância — abrir um socket TCP por request seria caro em serverless.
+ */
+const globalForRedis = globalThis as unknown as { __lcpayRedis?: Redis | null };
 
 function getRedis(): Redis | null {
-  if (redisClient !== undefined) return redisClient;
-  const env = readRedisEnv();
-  redisClient = env ? new Redis(env) : null;
-  return redisClient;
+  if (globalForRedis.__lcpayRedis !== undefined) return globalForRedis.__lcpayRedis;
+
+  const url = readRedisUrl();
+  globalForRedis.__lcpayRedis = url
+    ? new Redis(url, {
+        // Em serverless a instância congela e o socket cai; o ioredis reconecta
+        // sozinho. Limitamos as tentativas para uma falha virar erro rápido em
+        // vez de pendurar o checkout.
+        maxRetriesPerRequest: 2,
+        connectTimeout: 8_000,
+      })
+    : null;
+  return globalForRedis.__lcpayRedis;
 }
 
 export function isUsingRedis(): boolean {
@@ -86,6 +100,18 @@ export function isUsingRedis(): boolean {
 const orderKey = (id: string) => `lccs:order:${id}`;
 const txKey = (transactionId: string) => `lccs:tx:${transactionId.toUpperCase()}`;
 const paidKey = (id: string) => `lccs:paid:${id}`;
+
+/** O ioredis guarda strings — a serialização é nossa. */
+async function redisGetJson<T>(redis: Redis, key: string): Promise<T | null> {
+  const raw = await redis.get(key);
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    console.error(`[store] valor inválido em ${key}; tratando como ausente`);
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------- Arquivo
 
@@ -163,7 +189,13 @@ export async function createOrder(items: OrderItem[], totalCents: number): Promi
     for (let attempt = 0; attempt < 5; attempt++) {
       const order = newOrder(generateOrderId(), items, totalCents);
       // NX garante que um id sorteado duas vezes não sobrescreva um pedido existente.
-      const stored = await redis.set(orderKey(order.id), order, { nx: true, ex: TTL_SECONDS });
+      const stored = await redis.set(
+        orderKey(order.id),
+        JSON.stringify(order),
+        "EX",
+        TTL_SECONDS,
+        "NX",
+      );
       if (stored) return order;
     }
     throw new Error("Não foi possível gerar um id de pedido único.");
@@ -183,7 +215,7 @@ export async function createOrder(items: OrderItem[], totalCents: number): Promi
 
 export async function getOrder(id: string): Promise<Order | null> {
   const redis = getRedis();
-  if (redis) return (await redis.get<Order>(orderKey(id))) ?? null;
+  if (redis) return redisGetJson<Order>(redis, orderKey(id));
 
   const database = await readDatabase();
   return database.orders[id] ?? null;
@@ -192,7 +224,7 @@ export async function getOrder(id: string): Promise<Order | null> {
 export async function findOrderByTransactionId(transactionId: string): Promise<Order | null> {
   const redis = getRedis();
   if (redis) {
-    const id = await redis.get<string>(txKey(transactionId));
+    const id = await redis.get(txKey(transactionId));
     return id ? getOrder(id) : null;
   }
 
@@ -207,7 +239,7 @@ export async function findOrderByTransactionId(transactionId: string): Promise<O
 async function persist(order: Order): Promise<Order> {
   const redis = getRedis();
   if (redis) {
-    await redis.set(orderKey(order.id), order, { ex: TTL_SECONDS });
+    await redis.set(orderKey(order.id), JSON.stringify(order), "EX", TTL_SECONDS);
     return order;
   }
 
@@ -234,7 +266,7 @@ export async function attachCharge(id: string, charge: PixCharge): Promise<Order
   await persist(updated);
 
   const redis = getRedis();
-  if (redis) await redis.set(txKey(charge.transactionId), id, { ex: TTL_SECONDS });
+  if (redis) await redis.set(txKey(charge.transactionId), id, "EX", TTL_SECONDS);
 
   return updated;
 }
@@ -257,7 +289,7 @@ export async function markOrderPaid(
   const redis = getRedis();
 
   if (redis) {
-    const claimed = await redis.set(paidKey(id), details.paidVia, { nx: true, ex: TTL_SECONDS });
+    const claimed = await redis.set(paidKey(id), details.paidVia, "EX", TTL_SECONDS, "NX");
     if (!claimed) return getOrder(id); // outro caminho já confirmou
 
     const order = await getOrder(id);

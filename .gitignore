@@ -44,3 +44,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Reaplicado pelo `vercel env pull`. A exceção precisa vir depois: no gitignore,
+# vale o último padrão que casa — sem ela o modelo .env.example sairia do repo.
+.env*
+!.env.example
