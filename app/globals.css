@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/**
+ * Identidade LC — cores extraídas dos assets oficiais do LC Pay
+ * (tema e logo da documentação): âmbar #F5A906 + roxo, fundo escuro #1a1922.
+ */
+@theme {
+  --color-lc-amber-50: #fef8e7;
+  --color-lc-amber-100: #fdeec1;
+  --color-lc-amber-200: #fbdd84;
+  --color-lc-amber-300: #f9c945;
+  --color-lc-amber-400: #f7b81b;
+  --color-lc-amber-500: #f5a906;
+  --color-lc-amber-600: #d98d04;
+  --color-lc-amber-700: #a86a07;
+  --color-lc-amber-800: #85530d;
+  --color-lc-amber-900: #6b4310;
+
+  --color-lc-purple-50: #f4f1fb;
+  --color-lc-purple-100: #eae3f7;
+  --color-lc-purple-200: #d5c7ef;
+  --color-lc-purple-300: #b9a1e4;
+  --color-lc-purple-400: #9373ee;
+  --color-lc-purple-500: #7b4fd0;
+  --color-lc-purple-600: #6b3fa0;
+  --color-lc-purple-700: #5b2d8e;
+  --color-lc-purple-800: #4a2472;
+  --color-lc-purple-900: #3a1c59;
+
+  --color-lc-ink: #1a1922;
+  --color-lc-ink-soft: #24222e;
+  --color-lc-ink-line: #35323f;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Tokens semânticos: um valor por tema, para não espalhar hex pelos componentes. */
+:root {
+  --surface-page: #f7f7f9;
+  --surface-card: #ffffff;
+  --surface-muted: #f1f1f4;
+  --border-subtle: #e3e3e8;
+  --text-strong: #16151c;
+  --text-body: #45434f;
+  --text-muted: #6d6a7a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-page: #131218;
+    --surface-card: #1a1922;
+    --surface-muted: #24222e;
+    --border-subtle: #35323f;
+    --text-strong: #f5f4f7;
+    --text-body: #c9c6d4;
+    --text-muted: #918da0;
+  }
+}
+
+@theme inline {
+  --color-surface-page: var(--surface-page);
+  --color-surface-card: var(--surface-card);
+  --color-surface-muted: var(--surface-muted);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-strong: var(--text-strong);
+  --color-text-body: var(--text-body);
+  --color-text-muted: var(--text-muted);
+}
+
+body {
+  background: var(--surface-page);
+  color: var(--text-body);
+}
+
+/* Preços e valores alinhados em colunas — evita o número "dançar" ao atualizar. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
