@@ -15,13 +15,18 @@ import {
   SpinnerIcon,
   TrashIcon,
 } from "@/components/Icons";
-import { formatBRL } from "@/lib/products";
+import { MIN_CHARGE_CENTS, formatBRL } from "@/lib/products";
 
 export function CartView() {
   const { entries, totalCents, itemCount, isHydrated, setQty, remove } = useCart();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A LCPay recusa cobranças abaixo de R$ 0,59. Avisamos aqui, com o quanto falta,
+  // em vez de deixar o usuário clicar e receber um erro.
+  const missingCents = MIN_CHARGE_CENTS - totalCents;
+  const belowMinimum = missingCents > 0;
 
   async function handleCheckout() {
     setIsSubmitting(true);
@@ -171,6 +176,17 @@ export function CartView() {
           </span>
         </div>
 
+        {belowMinimum && (
+          <p className="mt-4 flex items-start gap-2 rounded-lg bg-lc-amber-50 p-3 text-xs leading-relaxed text-lc-amber-900 dark:bg-lc-amber-500/10 dark:text-lc-amber-200">
+            <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              O Pix da LC Pay tem valor mínimo de{" "}
+              <strong className="tabular">{formatBRL(MIN_CHARGE_CENTS)}</strong>. Faltam{" "}
+              <strong className="tabular">{formatBRL(missingCents)}</strong> para fechar o pedido.
+            </span>
+          </p>
+        )}
+
         {error && (
           <p
             role="alert"
@@ -184,7 +200,7 @@ export function CartView() {
         <button
           type="button"
           onClick={handleCheckout}
-          disabled={isSubmitting}
+          disabled={isSubmitting || belowMinimum}
           className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-lc-amber-500 px-4 text-sm font-semibold text-lc-ink transition-colors hover:bg-lc-amber-400 focus-visible:ring-2 focus-visible:ring-lc-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? (

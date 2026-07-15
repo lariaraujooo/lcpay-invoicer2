@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { logCredentialDiagnostics } from "@/lib/config";
 import { LcPayError, createPixCharge } from "@/lib/lcpay";
-import { findProduct } from "@/lib/products";
+import { MIN_CHARGE_CENTS, findProduct, formatBRL } from "@/lib/products";
 import { attachCharge, createOrder, markOrderFailed, type Order, type OrderItem } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -63,6 +63,16 @@ export async function POST(request: Request) {
   const totalCents = items.reduce((sum, item) => sum + item.priceCents * item.qty, 0);
   if (totalCents <= 0) {
     return NextResponse.json({ error: "Total do pedido precisa ser maior que zero." }, { status: 400 });
+  }
+  // A LCPay recusa transações abaixo deste valor (422). Barramos aqui para não
+  // gastar uma chamada e para o usuário receber a instrução, não o erro do gateway.
+  if (totalCents < MIN_CHARGE_CENTS) {
+    return NextResponse.json(
+      {
+        error: `O valor mínimo de uma cobrança Pix é ${formatBRL(MIN_CHARGE_CENTS)}. Adicione mais itens ao carrinho.`,
+      },
+      { status: 400 },
+    );
   }
 
   // Gravar o pedido pode falhar antes de qualquer contato com a LCPay — por exemplo

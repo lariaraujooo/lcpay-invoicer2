@@ -139,10 +139,22 @@ dizer o valor. Validamos a `X-Api-Key` (comparação em tempo constante) e **con
 **Validamos antes de enviar.** A doc avisa que o `pixCashIn` *não aplica Bean Validation* e que
 valores inválidos tendem a virar 500 — então o payload é checado antes do POST.
 
-### Uma divergência na documentação
+### O que a documentação não conta
 
-A página *"URLs Produção e Homologação"* grafa o path como `pixCashin`, mas o **OpenAPI oficial** e a
-página do endpoint usam **`pixCashIn`** (I maiúsculo). O código segue o OpenAPI.
+**Valor mínimo de R$ 0,59 por transação.** Não aparece em nenhuma página da doc. Cobrar R$ 0,10
+devolve `422 Operação inválida. O valor da transação deve ser de no mínimo: R$ 0,59`. Cinco dos
+nove itens custam menos que isso, então o carrinho precisa somar ao menos `MIN_CHARGE_CENTS`
+([lib/products.ts](lib/products.ts)) — o botão de pagar fica bloqueado até lá, informando quanto
+falta, e o servidor barra por garantia.
+
+**`pixCashIn` vs `pixCashin`.** A página *"URLs Produção e Homologação"* grafa o path com `i`
+minúsculo, divergindo do **OpenAPI oficial** e da página do endpoint. O código segue o OpenAPI.
+
+**"Conta" não é o número da conta.** O `accountId` do path é o **GUID** que aparece em `Conta:` no
+bloco do botão *Copiar* (menu "Tokens PDV") — algo como `133BD098-F481-48D6-6F7F-A357E09DEB45`.
+Usar outro identificador devolve `400 Conta cadastrada no sistema não pertence ao usuário`, que
+sugere falta de permissão quando na verdade é o valor errado. Em 400/401/403 o checkout registra um
+diagnóstico no log (formato das credenciais, sem expor valores) para separar os dois casos.
 
 ---
 

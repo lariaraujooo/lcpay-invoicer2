@@ -5,6 +5,18 @@
  * acontece só na fronteira da API da LCPay, em `valorTotal`.
  */
 
+/**
+ * Valor mínimo aceito pela LCPay numa transação Pix.
+ *
+ * NÃO está na documentação — descoberto em produção, ao tentar cobrar R$ 0,10:
+ *   HTTP 422 "Operação inválida. O valor da transação deve ser de no mínimo: R$ 0,59"
+ *
+ * Cinco itens do catálogo custam menos que isso, então o carrinho precisa somar
+ * pelo menos este valor. Bloqueamos antes de chamar a API para o usuário receber
+ * uma instrução clara em vez do erro cru do gateway.
+ */
+export const MIN_CHARGE_CENTS = 59;
+
 export type Product = {
   sku: string;
   emoji: string;
