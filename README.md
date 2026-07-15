@@ -7,8 +7,9 @@ Não tem finalidade comercial: existe para exercitar o fluxo ponta a ponta.
 Vitrine → Carrinho → Resumo → Pagar com Pix → Cobrança na LC Pay → QR Code → Pagamento → Confirmação
 ```
 
-Nove itens simbólicos da cultura do time, de **R$ 0,10 a R$ 1,00** — valores baixos porque os testes
-usam Pix real.
+Nove itens simbólicos da cultura do time, de **R$ 0,59 a R$ 1,00** — valores baixos porque os testes
+usam Pix real. O piso é o mínimo que a LC Pay aceita por transação (veja abaixo), então qualquer item
+pode ser comprado sozinho.
 
 ---
 
@@ -142,10 +143,11 @@ valores inválidos tendem a virar 500 — então o payload é checado antes do P
 ### O que a documentação não conta
 
 **Valor mínimo de R$ 0,59 por transação.** Não aparece em nenhuma página da doc. Cobrar R$ 0,10
-devolve `422 Operação inválida. O valor da transação deve ser de no mínimo: R$ 0,59`. Cinco dos
-nove itens custam menos que isso, então o carrinho precisa somar ao menos `MIN_CHARGE_CENTS`
-([lib/products.ts](lib/products.ts)) — o botão de pagar fica bloqueado até lá, informando quanto
-falta, e o servidor barra por garantia.
+devolve `422 Operação inválida. O valor da transação deve ser de no mínimo: R$ 0,59`. Foi o motivo
+de o catálogo começar exatamente em R$ 0,59 — a escala original, de R$ 0,10, deixava cinco itens
+impossíveis de comprar sozinhos. `MIN_CHARGE_CENTS` ([lib/products.ts](lib/products.ts)) guarda a
+regra no carrinho e no servidor: hoje nenhum total fica abaixo dela, mas baixar um preço sem essa
+checagem voltaria a quebrar em produção.
 
 **`pixCashIn` vs `pixCashin`.** A página *"URLs Produção e Homologação"* grafa o path com `i`
 minúsculo, divergindo do **OpenAPI oficial** e da página do endpoint. O código segue o OpenAPI.
