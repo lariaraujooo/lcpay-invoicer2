@@ -11,9 +11,16 @@ export type LcPayConfig = {
   baseUrl: string;
   accountId: string;
   token: string;
-  webhookApiKey: string;
-  /** URL HTTPS pública desta aplicação. Ausente = webhook desligado (só polling). */
+  /**
+   * Chave que autentica a notificação da LCPay, fornecida pela equipe deles.
+   * Ausente = não temos como provar que um webhook veio mesmo da LCPay, então
+   * não pedimos notificação nenhuma e a conciliação fica com o polling.
+   */
+  webhookApiKey: string | null;
+  /** URL HTTPS pública desta aplicação. */
   publicBaseUrl: string | null;
+  /** Só existe quando temos URL pública E chave para validar a notificação. */
+  webhookUrl: string | null;
   isProduction: boolean;
 };
 
@@ -69,12 +76,18 @@ export function getConfig(): LcPayConfig {
 
   const baseUrl = (process.env.LCPAY_BASE_URL?.trim() || "https://api.lcpay.com.br").replace(/\/+$/, "");
 
+  const webhookApiKey = process.env.LCPAY_WEBHOOK_API_KEY?.trim() || null;
+  const publicBaseUrl = readPublicBaseUrl();
+
   cached = {
     baseUrl,
     accountId: required("LCPAY_ACCOUNT_ID"),
     token: required("LCPAY_TOKEN"),
-    webhookApiKey: required("LCPAY_WEBHOOK_API_KEY"),
-    publicBaseUrl: readPublicBaseUrl(),
+    webhookApiKey,
+    publicBaseUrl,
+    // Só pedimos notificação se pudermos validá-la. Sem a chave, um POST na nossa
+    // rota não seria distinguível de um curl de qualquer pessoa na internet.
+    webhookUrl: publicBaseUrl && webhookApiKey ? `${publicBaseUrl}/api/webhooks/lcpay` : null,
     isProduction: !baseUrl.includes("-hml"),
   };
   return cached;
@@ -92,9 +105,16 @@ export function getEnvironmentInfo() {
     return {
       configured: true as const,
       isProduction: config.isProduction,
-      webhookEnabled: config.publicBaseUrl !== null,
+      webhookEnabled: config.webhookUrl !== null,
+      /** Tem URL pública mas falta a chave: o webhook poderia funcionar, mas não validaríamos. */
+      webhookMissingKey: config.publicBaseUrl !== null && config.webhookApiKey === null,
     };
   } catch {
-    return { configured: false as const, isProduction: true, webhookEnabled: false };
+    return {
+      configured: false as const,
+      isProduction: true,
+      webhookEnabled: false,
+      webhookMissingKey: false,
+    };
   }
 }

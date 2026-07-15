@@ -121,15 +121,16 @@ async function request(pathname: string, init: RequestInit): Promise<unknown> {
  * A doc avisa que este endpoint NÃO aplica Bean Validation e que valores inválidos
  * tendem a virar 500 — por isso validamos o payload aqui antes de enviar.
  *
- * `urlCallBackIntegrador` só é enviado se houver URL pública HTTPS configurada;
- * omiti-lo é o jeito documentado de dizer "não quero webhook" (aí vale o polling).
+ * `urlCallBackIntegrador` só é enviado quando temos URL pública HTTPS *e* a chave
+ * para validar a notificação; omiti-lo é o jeito documentado de dizer "não quero
+ * webhook" (aí a conciliação fica com o polling).
  */
 export async function createPixCharge(input: {
   amountCents: number;
   orderId: string;
   description: string;
 }): Promise<PixCharge> {
-  const { accountId, publicBaseUrl } = getConfig();
+  const { accountId, webhookUrl } = getConfig();
 
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
     throw new LcPayError("Valor da cobrança precisa ser maior que zero.", 422);
@@ -143,8 +144,8 @@ export async function createPixCharge(input: {
     numeroPedido: input.orderId,
     conteudo: input.description,
   };
-  if (publicBaseUrl) {
-    payload.urlCallBackIntegrador = `${publicBaseUrl}/api/webhooks/lcpay`;
+  if (webhookUrl) {
+    payload.urlCallBackIntegrador = webhookUrl;
   }
 
   const response = (await request(`/api/v2/movimentacao/${encodeURIComponent(accountId)}/pixCashIn`, {

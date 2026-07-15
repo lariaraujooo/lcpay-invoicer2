@@ -39,6 +39,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Configuração indisponível." }, { status: 500 });
   }
 
+  // Sem a chave configurada não há como distinguir uma notificação da LCPay de um
+  // POST qualquer da internet — e a rota é pública. Recusamos tudo.
+  if (!config.webhookApiKey) {
+    console.warn("[webhook] recusado: LCPAY_WEBHOOK_API_KEY não configurada");
+    return NextResponse.json({ error: "Webhook não habilitado." }, { status: 503 });
+  }
+
   if (!isValidApiKey(request.headers.get("x-api-key"), config.webhookApiKey)) {
     console.warn("[webhook] recusado: X-Api-Key inválida ou ausente");
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });

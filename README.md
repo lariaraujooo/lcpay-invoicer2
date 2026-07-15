@@ -30,7 +30,7 @@ O bloco copiado traz a **Conta** e o **Token**. Preencha o `.env.local`:
 | `LCPAY_BASE_URL` | `https://api.lcpay.com.br` (produção) ou `https://api-hml.lcpay.com.br` (homologação) | usa produção por padrão |
 | `LCPAY_ACCOUNT_ID` | Conta, do bloco copiado no painel | sim |
 | `LCPAY_TOKEN` | Token de integração (validade ~2 anos) | sim |
-| `LCPAY_WEBHOOK_API_KEY` | Chave que a LC Pay envia no header `X-Api-Key` do webhook | sim |
+| `LCPAY_WEBHOOK_API_KEY` | Chave que a LC Pay envia no header `X-Api-Key` do webhook. Sem ela o webhook fica desligado e vale o polling | não |
 | `PUBLIC_BASE_URL` | URL HTTPS pública da app. Vazio = webhook desligado. Na Vercel é detectada sozinha | não |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Redis dos pedidos. Vazio no localhost (usa arquivo); **obrigatório na Vercel** | só em serverless |
 
@@ -49,9 +49,17 @@ faz um `POST` em `/api/webhooks/lcpay` com o **corpo vazio** e os dados nos head
 **Consulta de status** (fallback oficial) — a tela do QR consulta `/api/orders/[id]` a cada ~3s, que
 por sua vez chama `consultarTransactions` na LC Pay enquanto o pedido estiver pendente.
 
-O webhook exige URL pública HTTPS, então **em `localhost` ele é omitido** (comportamento documentado:
-sem `urlCallBackIntegrador`, nenhuma notificação é disparada) e a confirmação fica com a consulta.
-Isso faz o fluxo funcionar de imediato, sem nenhum setup extra.
+O `urlCallBackIntegrador` só é enviado quando **as duas** condições existem:
+
+1. **URL pública HTTPS** — a LC Pay precisa nos alcançar. Em `localhost` não há como; na Vercel é
+   automática.
+2. **`LCPAY_WEBHOOK_API_KEY`** — sem ela não conseguimos provar que a notificação veio da LC Pay, e
+   a rota é pública. Aceitar sem validar deixaria qualquer um marcar pedidos como pagos.
+
+Faltando qualquer uma, omitimos o campo — que é o jeito documentado de dizer "não quero notificação"
+— e a confirmação fica com a consulta de status. O fluxo funciona igual; só o rótulo na tela muda
+de *"Webhook da LC Pay"* para *"Consulta de status"*. Para ligar o webhook, peça a chave ao time
+LC Pay e adicione a variável.
 
 ### Testar o webhook de verdade
 
@@ -78,8 +86,8 @@ Dois passos no painel da Vercel, uma vez só:
 1. **Storage → Upstash for Redis** (plano free). O filesystem das funções serverless é
    somente-leitura, então o arquivo JSON não serve lá. A integração injeta `KV_REST_API_URL` e
    `KV_REST_API_TOKEN` sozinha. Sem isso a app avisa em vermelho no topo.
-2. **Settings → Environment Variables**: `LCPAY_ACCOUNT_ID`, `LCPAY_TOKEN` e
-   `LCPAY_WEBHOOK_API_KEY` (marque como *Sensitive*).
+2. **Settings → Environment Variables**: `LCPAY_ACCOUNT_ID` e `LCPAY_TOKEN` (marque como
+   *Sensitive*). A `LCPAY_WEBHOOK_API_KEY` é opcional — sem ela vale o polling.
 
 > A LC Pay precisa alcançar `/api/webhooks/lcpay` sem autenticação. Se **Deployment Protection**
 > estiver ligada no projeto, a notificação recebe uma tela de login em vez da rota, e o pagamento
