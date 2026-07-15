@@ -95,6 +95,10 @@ async function request(pathname: string, init: RequestInit): Promise<unknown> {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
+        // Obrigatório mesmo em GET sem corpo: a consulta de status responde
+        // 415 (Unsupported Media Type) sem este header. Não está documentado —
+        // o exemplo da doc para esse endpoint não envia header algum.
+        "Content-Type": "application/json",
         ...init.headers,
       },
       cache: "no-store",

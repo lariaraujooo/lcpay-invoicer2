@@ -37,6 +37,10 @@ export function PaymentPanel({ initialOrder }: { initialOrder: OrderView }) {
   const [copied, setCopied] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
+  // Falhas seguidas na consulta significam que não conseguimos confirmar sozinhos.
+  // Precisa aparecer: senão a tela diz "aguardando" para sempre e o usuário acha
+  // que o pagamento dele não caiu.
+  const [pollFailures, setPollFailures] = useState(0);
   const startedAt = useRef(0);
   const { clear } = useCart();
 
@@ -52,13 +56,23 @@ export function PaymentPanel({ initialOrder }: { initialOrder: OrderView }) {
   const checkStatus = useCallback(async (): Promise<OrderStatus | null> => {
     try {
       const response = await fetch(`/api/orders/${initialOrder.id}`, { cache: "no-store" });
-      if (!response.ok) return null;
-      const payload = (await response.json()) as { order?: OrderView };
-      if (!payload.order) return null;
+      if (!response.ok) {
+        setPollFailures((count) => count + 1);
+        return null;
+      }
+      const payload = (await response.json()) as { order?: OrderView; pollError?: boolean };
+      if (!payload.order) {
+        setPollFailures((count) => count + 1);
+        return null;
+      }
       setOrder(payload.order);
+      // `pollError` = a rota respondeu, mas a consulta à LC Pay falhou. Sem contar
+      // isso, um gateway fora do ar fica indistinguível de "ainda não pagaram".
+      setPollFailures((count) => (payload.pollError ? count + 1 : 0));
       return payload.order.status;
     } catch {
       // Rede oscilando não muda o pedido: a próxima tentativa (ou o webhook) resolve.
+      setPollFailures((count) => count + 1);
       return null;
     }
   }, [initialOrder.id]);
@@ -237,6 +251,7 @@ export function PaymentPanel({ initialOrder }: { initialOrder: OrderView }) {
             pollTimedOut={pollTimedOut}
             isChecking={isChecking}
             onCheck={handleManualCheck}
+            isDegraded={pollFailures >= 3}
           />
         </div>
       </div>
@@ -248,11 +263,42 @@ function StatusRow({
   pollTimedOut,
   isChecking,
   onCheck,
+  isDegraded,
 }: {
   pollTimedOut: boolean;
   isChecking: boolean;
   onCheck: () => void;
+  isDegraded: boolean;
 }) {
+  // Falhando de forma persistente: se o pagamento já foi feito, ele está seguro —
+  // o que quebrou foi a nossa confirmação. Dizer isso evita que a pessoa pague de novo.
+  if (isDegraded && !pollTimedOut) {
+    return (
+      <div
+        role="status"
+        className="mt-5 rounded-lg bg-red-50 p-3 text-xs leading-relaxed text-red-700 dark:bg-red-500/10 dark:text-red-300"
+      >
+        <p className="flex items-start gap-2">
+          <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Não estamos conseguindo confirmar o pagamento com a LC Pay. Se você já pagou,{" "}
+            <strong>não pague de novo</strong> — a transação está registrada no seu banco. Tente
+            verificar em instantes.
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={onCheck}
+          disabled={isChecking}
+          className="mt-2 inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 bg-surface-card px-3.5 text-xs font-semibold text-text-body transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none disabled:opacity-60 dark:border-red-500/30"
+        >
+          {isChecking ? <SpinnerIcon className="h-3.5 w-3.5 animate-spin" /> : null}
+          Verificar agora
+        </button>
+      </div>
+    );
+  }
+
   if (pollTimedOut) {
     return (
       <div className="mt-5 rounded-lg border border-border-subtle bg-surface-muted p-3">
