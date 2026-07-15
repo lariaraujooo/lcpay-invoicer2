@@ -118,23 +118,39 @@ function decodeJwtPayload(token: string): string | null {
  * valor colado com sujeira (aspas, rótulo), ou conta e token de origens diferentes.
  */
 export function logCredentialDiagnostics(): void {
-  const accountId = process.env.LCPAY_ACCOUNT_ID?.trim() ?? "";
-  const token = process.env.LCPAY_TOKEN?.trim() ?? "";
+  // Diagnóstico nunca pode derrubar o request que está tratando um erro.
+  try {
+    const accountId = process.env.LCPAY_ACCOUNT_ID?.trim() ?? "";
+    const token = process.env.LCPAY_TOKEN?.trim() ?? "";
 
-  const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
-  const payload = decodeJwtPayload(token);
-  const mentionsAccount =
-    payload && accountId ? payload.toLowerCase().includes(accountId.toLowerCase()) : false;
+    const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+    const payload = decodeJwtPayload(token);
+    const mentionsAccount =
+      payload && accountId ? payload.toLowerCase().includes(accountId.toLowerCase()) : false;
 
-  console.error(
-    [
-      "[diagnóstico] credenciais LCPay:",
-      `accountId ${accountId.length} chars, formato GUID: ${isGuid ? "sim" : "NÃO"}`,
-      `token ${token.length} chars, formato JWT: ${payload ? "sim" : "NÃO"}`,
-      `token menciona o accountId: ${mentionsAccount ? "sim" : "NÃO"}`,
-      payload ? `claims do token: ${Object.keys(JSON.parse(payload) as object).join(", ")}` : "",
-    ].join(" | "),
-  );
+    let claims = "";
+    if (payload) {
+      try {
+        claims = Object.keys(JSON.parse(payload) as object).join(", ");
+      } catch {
+        claims = "(payload não é JSON)";
+      }
+    }
+
+    console.error(
+      [
+        "[diagnostico] credenciais LCPay:",
+        `accountId ${accountId.length} chars, formato GUID: ${isGuid ? "sim" : "NAO"}`,
+        `token ${token.length} chars, formato JWT: ${payload ? "sim" : "NAO"}`,
+        `token menciona o accountId: ${mentionsAccount ? "sim" : "NAO"}`,
+        claims && `claims do token: ${claims}`,
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    );
+  } catch (error) {
+    console.error("[diagnostico] falhou", error);
+  }
 }
 
 /** Diagnóstico para a UI. Nunca expõe valores de credencial — apenas se estão presentes. */
