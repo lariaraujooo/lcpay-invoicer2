@@ -13,7 +13,7 @@ export async function DemoBanner() {
   // credenciais no HTML — continuaria dizendo "não configuradas" depois do setup.
   await connection();
 
-  const { configured, isProduction, webhookEnabled, webhookMissingKey } = getEnvironmentInfo();
+  const { configured, isProduction, webhookEnabled, webhookUnverifiedKey } = getEnvironmentInfo();
   // Em serverless o armazenamento em arquivo não funciona: sem Redis, os pedidos
   // se perdem entre invocações e nada é conciliado.
   const storageBroken = isServerless() && !isUsingRedis();
@@ -32,12 +32,13 @@ export async function DemoBanner() {
               : isProduction
                 ? "Conectado à produção da LC Pay: os pagamentos Pix são reais e o valor é debitado de verdade."
                 : "Conectado ao ambiente de homologação da LC Pay: os pagamentos não são reais."}
-            {configured && webhookEnabled && " Webhook ativo."}
-            {configured && webhookMissingKey && (
+            {configured && webhookEnabled && !webhookUnverifiedKey && " Webhook ativo."}
+            {configured && webhookUnverifiedKey && (
               <>
                 {" "}
-                Webhook desligado (sem <code className="font-mono">LCPAY_WEBHOOK_API_KEY</code>) — a
-                confirmação usa a consulta de status.
+                Webhook ativo — cada notificação é reconfirmada na LC Pay (a{" "}
+                <code className="font-mono">X-Api-Key</code> ainda não foi fornecida para validação
+                adicional).
               </>
             )}
           </span>

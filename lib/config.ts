@@ -85,9 +85,12 @@ export function getConfig(): LcPayConfig {
     token: required("LCPAY_TOKEN"),
     webhookApiKey,
     publicBaseUrl,
-    // Só pedimos notificação se pudermos validá-la. Sem a chave, um POST na nossa
-    // rota não seria distinguível de um curl de qualquer pessoa na internet.
-    webhookUrl: publicBaseUrl && webhookApiKey ? `${publicBaseUrl}/api/webhooks/lcpay` : null,
+    // A doc ativa o webhook só com a URL de callback: informar `urlCallBackIntegrador`
+    // basta, a X-Api-Key não é pré-requisito. Então pedimos a notificação sempre que
+    // houver URL pública HTTPS. Cada notificação é reconfirmada em consultarTransactions
+    // antes de liberar o pedido — é isso que impede um webhook forjado de confirmar algo
+    // falso. Se a chave estiver configurada, a rota também a valida (camada extra).
+    webhookUrl: publicBaseUrl ? `${publicBaseUrl}/api/webhooks/lcpay` : null,
     isProduction: !baseUrl.includes("-hml"),
   };
   return cached;
@@ -161,15 +164,15 @@ export function getEnvironmentInfo() {
       configured: true as const,
       isProduction: config.isProduction,
       webhookEnabled: config.webhookUrl !== null,
-      /** Tem URL pública mas falta a chave: o webhook poderia funcionar, mas não validaríamos. */
-      webhookMissingKey: config.publicBaseUrl !== null && config.webhookApiKey === null,
+      /** Webhook ativo, mas sem a chave para validar: a garantia vem da reconfirmação na LCPay. */
+      webhookUnverifiedKey: config.webhookUrl !== null && config.webhookApiKey === null,
     };
   } catch {
     return {
       configured: false as const,
       isProduction: true,
       webhookEnabled: false,
-      webhookMissingKey: false,
+      webhookUnverifiedKey: false,
     };
   }
 }

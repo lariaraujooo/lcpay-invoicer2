@@ -10,14 +10,22 @@ export const runtime = "nodejs";
 /**
  * Notificação de pagamento da LCPay.
  *
- * Conforme a doc, a requisição chega com o CORPO VAZIO — tudo vem nos headers:
+ * Conforme a doc ("Fluxos de integração" e página de Webhook), a requisição chega
+ * com o CORPO VAZIO — tudo vem nos headers:
  *   webhook-event-type: pix.payment
  *   webhook-transaction-id: <transactionId>
  *   webhook-external-code: <vazio no Pix dinâmico>
- *   X-Api-Key: <chave da notificação>
+ *   X-Api-Key: <chave da notificação — "valide antes de processar">
  *
  * Precisamos responder 2xx rápido; qualquer outra coisa entra na fila de reenvio
- * (≈1 min, até 30 tentativas).
+ * (~2 min, até ~30 tentativas).
+ *
+ * Segurança: a notificação nunca é a palavra final. Como o corpo é vazio, ela
+ * afirma "foi pago" sem provar o valor — então reconfirmamos com
+ * `consultarTransactions` e só liberamos o pedido em APPROVED. Essa reconfirmação
+ * na própria LCPay é a fronteira de segurança; a `X-Api-Key`, quando temos o valor
+ * para comparar, é uma camada extra. A doc não expõe onde obter a chave, e por isso
+ * a validação por chave é opcional — sem ela, a reconfirmação sustenta a garantia.
  */
 
 /** Comparação em tempo constante — evita descobrir a chave por timing. */
@@ -39,14 +47,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Configuração indisponível." }, { status: 500 });
   }
 
-  // Sem a chave configurada não há como distinguir uma notificação da LCPay de um
-  // POST qualquer da internet — e a rota é pública. Recusamos tudo.
-  if (!config.webhookApiKey) {
-    console.warn("[webhook] recusado: LCPAY_WEBHOOK_API_KEY não configurada");
-    return NextResponse.json({ error: "Webhook não habilitado." }, { status: 503 });
-  }
-
-  if (!isValidApiKey(request.headers.get("x-api-key"), config.webhookApiKey)) {
+  // A doc manda validar a X-Api-Key "antes de processar". Só conseguimos comparar
+  // se tivermos o valor esperado configurado. Quando temos, uma chave divergente é
+  // recusada aqui. Quando não temos (a doc não diz onde obtê-la), seguimos e deixamos
+  // a reconfirmação em consultarTransactions garantir que só um pagamento real passa.
+  if (config.webhookApiKey && !isValidApiKey(request.headers.get("x-api-key"), config.webhookApiKey)) {
     console.warn("[webhook] recusado: X-Api-Key inválida ou ausente");
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
@@ -54,8 +59,8 @@ export async function POST(request: Request) {
   const eventType = request.headers.get("webhook-event-type");
   const transactionId = request.headers.get("webhook-transaction-id");
 
-  // A partir daqui a chamada é autêntica. Respondemos 2xx mesmo no que não
-  // conseguimos usar, para não deixar a LCPay reenviando 30 vezes em vão.
+  // A partir daqui, respondemos 2xx mesmo no que não conseguimos usar, para não
+  // deixar a LCPay reenviando 30 vezes em vão.
   if (eventType !== "pix.payment") {
     console.warn(`[webhook] evento ignorado: ${eventType}`);
     return NextResponse.json({ received: true, ignored: "evento não tratado" });
