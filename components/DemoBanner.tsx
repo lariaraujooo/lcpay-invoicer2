@@ -52,8 +52,8 @@ export async function DemoBanner() {
               Armazenamento não configurado
             </span>{" "}
             <span className="text-red-100">
-              Sem Redis em ambiente serverless os pedidos não persistem. Conecte o Upstash em
-              Storage, no painel da Vercel.
+              Sem Redis em ambiente serverless os pedidos não persistem. Conecte um banco Redis em
+              Storage, no painel da Vercel, e defina <code className="font-mono">REDIS_URL</code>.
             </span>
           </div>
         </div>

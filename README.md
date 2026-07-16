@@ -84,9 +84,10 @@ Publicando, a app ganha URL pública HTTPS e **o webhook passa a funcionar sozin
 
 Dois passos no painel da Vercel, uma vez só:
 
-1. **Storage → Upstash for Redis** (plano free). O filesystem das funções serverless é
-   somente-leitura, então o arquivo JSON não serve lá. A integração injeta `KV_REST_API_URL` e
-   `KV_REST_API_TOKEN` sozinha. Sem isso a app avisa em vermelho no topo.
+1. **Storage → Create Database → Redis** (Redis Cloud, Upstash e outros têm plano free — qualquer
+   um serve). O filesystem das funções serverless é somente-leitura, então o arquivo JSON não vale
+   lá. A integração injeta `REDIS_URL` sozinha ao conectar ao projeto. Sem isso a app avisa em
+   vermelho no topo.
 2. **Settings → Environment Variables**: `LCPAY_ACCOUNT_ID` e `LCPAY_TOKEN` (marque como
    *Sensitive*). A `LCPAY_WEBHOOK_API_KEY` é opcional — sem ela vale o polling.
 
